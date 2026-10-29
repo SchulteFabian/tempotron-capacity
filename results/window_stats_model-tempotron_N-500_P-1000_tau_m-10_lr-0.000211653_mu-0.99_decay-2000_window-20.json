@@ -1,0 +1,9 @@
+{
+  "mean": 21.93,
+  "std": 4.51631486944832,
+  "n_spikes": 500,
+  "window": 20.0,
+  "random_mean": 20.03106,
+  "random_std": 4.367900557064,
+  "explained_fraction": 1.0165317635295255
+}

@@ -1,0 +1,17 @@
+# Python
+__pycache__/
+*.py[cod]
+
+# Jupyter
+.ipynb_checkpoints/
+
+# Logs of terminal runs
+logs/
+*.log
+
+# Editors and OS
+.vscode/
+.DS_Store
+
+# Old code kept locally, not part of the project
+old_*.py
