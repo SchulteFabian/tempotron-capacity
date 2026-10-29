@@ -19,6 +19,9 @@ import json
 RESULTS = Path(__file__).resolve().parent / "results"
 RESULTS.mkdir(exist_ok=True)
 
+FIGURES = Path(__file__).resolve().parent / "figures"
+FIGURES.mkdir(exist_ok=True)
+
 
 # ---------------------------------------------------------------------------
 # File names
