@@ -1,0 +1,2 @@
+# Exclude notebooks from GitHub's language statistics (embedded images inflate their size)
+*.ipynb linguist-detectable=false
