@@ -20,7 +20,7 @@ The tempotron is simulated by **exact event-based integration**. The membrane po
 
 ![Perceptron capacity](figures/perceptron_capacity.png)
 
-**Tempotron.** All datasets are learned up to $\alpha = 3.2$, and 75 % at $\alpha = 3.5$. This is consistent with the predicted capacity; runs at $\alpha = 3.6$–$3.8$ are in progress. Learning is fast over a broad plateau of parameters: $\tau_m$ between 7.5 and 25 ms, and initial learning rates between 0.5× and 4× the value of Gütig & Sompolinsky (2006).
+**Tempotron.** All datasets are learned up to $\alpha = 3.2$, and 75 % at $\alpha = 3.5$, at $\alpha = 3.8$ no more datasets are learned, consistent with the predicted capacity $\alpha_c \approx 3.68$ (Rubin et al. 2010). Learning is fast over a broad plateau of parameters: $\tau_m$ between 7.5 and 25 ms, and initial learning rates between 0.5× and 4× the value of Gütig & Sompolinsky (2006).
 
 ![Tempotron capacity](figures/tempotron_capacity.png)
 

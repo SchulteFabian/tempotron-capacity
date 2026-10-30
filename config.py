@@ -21,8 +21,8 @@ import multi_perceptron as mpc
 # ---------------------------------------------------------------------------
 
 PC_N = 500                        # input dimension
-PC_F = 0.04                       # coding level: probability that an input is active, The run was done for F = 0.5 and for F = 0.04, 
-                                    which resembles the sparse coding of around 20 spikes per pattern
+PC_F = 0.5                        # coding level: probability that an input is active, The run was done for F = 0.5 and for F = 0.04, 
+                                  # which resembles the sparse coding of around 20 spikes per pattern
 PC_THETA = 0.0                    # threshold (0 = classic perceptron without bias)
 PC_LR = 1.0                       # learning rate (irrelevant for theta = 0: it only rescales w)
 PC_W_STD = 1e-3                   # std of the initial weights
