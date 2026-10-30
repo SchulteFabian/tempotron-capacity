@@ -21,7 +21,8 @@ import multi_perceptron as mpc
 # ---------------------------------------------------------------------------
 
 PC_N = 500                        # input dimension
-PC_F = 0.5                        # coding level: probability that an input is active
+PC_F = 0.04                       # coding level: probability that an input is active, The run was done for F = 0.5 and for F = 0.04, 
+                                    which resembles the sparse coding of around 20 spikes per pattern
 PC_THETA = 0.0                    # threshold (0 = classic perceptron without bias)
 PC_LR = 1.0                       # learning rate (irrelevant for theta = 0: it only rescales w)
 PC_W_STD = 1e-3                   # std of the initial weights
@@ -92,7 +93,7 @@ TP_SINGLE_SEEDS = dict(data=100, init=110, order=120)
 TP_WINDOW = 20.0                  # ms before an output spike, for the input statistics
 
 # Capacity scan
-TP_CAP_ALPHAS = [2.4, 2.8, 3.0, 3.2, 3.4, 3.5]
+TP_CAP_ALPHAS = [2.4, 2.8, 3.0, 3.2, 3.4, 3.5, 3.6, 3.7, 3.8]
 TP_CAP_N_DATASETS = 20
 TP_CAP_MAX_EPOCHS = 20000
 
@@ -141,7 +142,7 @@ def window_stats_name():
 def tempotron_capacity_name():
     """File name of the tempotron capacity scan (shared by script and notebook)."""
     return ex.make_name("capacity", model="tempotron", N=TP_N, tau_m=TP_TAU_M, lr=TP_LR,
-                        mu=TP_MU, decay=TP_TAU_DECAY, n=TP_CAP_N_DATASETS,
+                        mu=TP_MU, decay=TP_TAU_DECAY, n=TP_CAP_N_DATASETS, 
                         max_epochs=TP_CAP_MAX_EPOCHS)
 
 
