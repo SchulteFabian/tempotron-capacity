@@ -76,7 +76,7 @@ python -m experiments.tempotron_capacity --n-jobs 7
 python -m experiments.mpc_data_scan --n-jobs 7
 ```
 
-`--n-jobs` sets the number of parallel processes (default: all cores but one). Results already in `results/` are skipped, so a scan can be stopped and restarted at any time. For long runs on macOS, prefix the command with `caffeinate -i` to keep the machine awake, and save the output with `2>&1 | tee logs/<name>.log`.
+`--n-jobs` sets the number of parallel processes (default: all cores but one). Results already in `results/` are skipped, so a scan can be stopped and restarted at any time.
 
 Then open `Summary.ipynb` and run all cells.
 
