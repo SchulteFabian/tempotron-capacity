@@ -1,4 +1,4 @@
-# Tempotron capacity
+# Tempotron capacity - In Progress
 
 Numerical study of the classification capacity $\alpha_c = P/N$ of three single-neuron models trained on random patterns:
 
