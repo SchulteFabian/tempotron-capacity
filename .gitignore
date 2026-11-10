@@ -15,3 +15,5 @@ logs/
 
 # Old code kept locally, not part of the project
 old_*.py
+# Old results kept locally, not part of the project
+results/archive/

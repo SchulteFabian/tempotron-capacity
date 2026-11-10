@@ -32,22 +32,32 @@ The tempotron is simulated by **exact event-based integration**. The membrane po
 
 ![Multi-perceptron capacity vs. K](figures/multi_perceptron_capacity_vs_K.png)
 
+**Multi-perceptron on a grid of $K$ and input sparsity.** Capacity as a function of the number of sub-patterns and of the mean number of active afferents per sub-pattern.
+
+![Multi-perceptron capacity grid](figures/multi_perceptron_capacity_grid.png)
+
 ## Repository structure
 
 ```
-├── Summary.ipynb                     # main notebook: models, experiments, figures
-├── tempotron.py                      # tempotron: data, kernel, exact integration, learning rules
-├── perceptron.py                     # classic perceptron (reference model)
-├── multi_perceptron.py               # perceptron with OR rule over K sub-patterns
-├── experiments.py                    # result file names, caching, resumable and parallel scans
-├── config.py                         # shared parameters for notebook and scripts
-├── run_capacity_tempotron.py         # long capacity scan from the terminal (multi-core)
-├── run_capacity_multi_perceptron.py  # capacity vs. K scan from the terminal (multi-core)
-├── results/                          # cached results (CSV/JSON/NPZ), read by the notebook
-└── figures/                          # figures saved by the notebook
+├── Summary.ipynb            # main notebook: models, experiments, results and figures (computes nothing)
+├── models/                  # the models: data, forward pass, learning rule, training
+│   ├── perceptron.py        #   classic perceptron (reference model)
+│   ├── tempotron.py         #   tempotron with exact event-based integration
+│   └── multi_perceptron.py  #   perceptron with OR rule over K sub-patterns
+├── experiments/             # one script per experiment, parameters at the top
+│   ├── runner.py            #   result file names, saving/loading, resumable parallel scans
+│   ├── perceptron_single.py, perceptron_capacity.py
+│   ├── tempotron_single.py  #   single run + analysis of the inputs before output spikes
+│   ├── tempotron_tau_scan.py, tempotron_lr_scan.py, tempotron_capacity.py
+│   ├── mpc_single.py, mpc_tune.py, mpc_capacity_vs_K.py
+│   ├── mpc_grid_scan.py     #   capacity on a grid of K and input sparsity
+│   └── mpc_data_scan.py     #   "exactly once" vs. independent sub-patterns
+├── cluster/                 # SLURM job script for the grid scan
+├── results/                 # results (CSV/NPZ/JSON), written by the experiments, read by the notebook
+└── figures/                 # figures saved by the notebook
 ```
 
-**Design.** All parameters live in `config.py`. Result file names are built from these parameters (`experiments.make_name`), so a changed parameter writes a new file and old results are never mixed in. Scans are resumable: an interrupted run continues where it stopped. The notebook and the terminal scripts read and write the same files.
+**Design.** The model code exists once, in `models/`, together with the standard parameters of each model. Every experiment is one script in `experiments/` with its own parameters at the top. Result file names are built from these parameters (`runner.make_name`), so a changed parameter writes a new file and old results are never mixed in. Scans are resumable: an interrupted run continues where it stopped. `Summary.ipynb` only loads the results; if one is missing, it prints the command that computes it.
 
 ## Installation
 
@@ -58,17 +68,23 @@ conda activate tempotron
 
 ## Usage
 
-Open `Summary.ipynb` and run all cells. Results already in `results/` are loaded, not recomputed.
-
-The long scans are meant to run from the terminal and use all CPU cores but one:
+All commands are run from the project folder. Every experiment is started as a module:
 
 ```bash
-mkdir -p logs
-python -u run_capacity_tempotron.py 2>&1 | tee logs/capacity_tempotron.log
-python -u run_capacity_multi_perceptron.py 2>&1 | tee logs/capacity_multi_perceptron.log
+python -m experiments.perceptron_capacity --n-jobs 7
+python -m experiments.tempotron_capacity --n-jobs 7
+python -m experiments.mpc_data_scan --n-jobs 7
 ```
 
-On macOS, prefix the commands with `caffeinate -i` to keep the machine awake.
+`--n-jobs` sets the number of parallel processes (default: all cores but one). Results already in `results/` are skipped, so a scan can be stopped and restarted at any time. For long runs on macOS, prefix the command with `caffeinate -i` to keep the machine awake, and save the output with `2>&1 | tee logs/<name>.log`.
+
+Then open `Summary.ipynb` and run all cells.
+
+**Cluster.** The scans run unchanged on a SLURM cluster: copy the project folder (or clone the repository) and submit one job per parameter combination, each with its own `--tag`, e.g. `cluster/grid.sbatch` for the grid scan. Afterwards, merge the part files into one result file:
+
+```bash
+python -m experiments.mpc_grid_scan --merge
+```
 
 ## References
 
