@@ -238,3 +238,14 @@ def estimate_crossing(x, frac, level=0.5):
     i = below[0]
     est = x[i - 1] + (frac[i - 1] - level) / (frac[i - 1] - frac[i]) * (x[i] - x[i - 1])
     return est, f"crossing at {est:.3f}"
+
+
+def merge_grid(folder, out_name="capacity_grid_multi_perceptron.csv"):
+    """Merge all part files in folder into one CSV and return it as a DataFrame."""
+    folder = Path(folder).expanduser()
+    parts = sorted(folder.glob("*_part-K*_mean*.csv"))           # the 49 files
+    df = pd.concat([pd.read_csv(p) for p in parts], ignore_index=True)
+    df = df.sort_values(["K", "mean", "dataset"]).reset_index(drop=True)
+    df.to_csv(folder.parent / out_name, index=False)                # -> results/
+    print(f"{len(parts)} files, {len(df)} rows -> {folder.parent / out_name}")
+    return df

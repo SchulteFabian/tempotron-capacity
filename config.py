@@ -179,7 +179,7 @@ MPC_CREDIT = "first"              # sub-pattern held responsible for a spike
 MPC_W_STD = 1e-3
 
 # Parameter tuning (learning rate and momentum) at one K near capacity
-MPC_TUNE_K = 25
+MPC_TUNE_K = 100
 MPC_TUNE_ALPHA = 2.8
 MPC_TUNE_LRS = [1e-3, 2e-3, 5e-3, 1e-2, 2e-2, 5e-2, 1e-1, 2e-1, 5e-1, 1]
 MPC_TUNE_MUS = [0.9, 0.99]
@@ -229,3 +229,44 @@ def mpc_capacity_task(K, dataset):
         mu=MPC_MU, credit=MPC_CREDIT,
     )
     return dict(P_ok=P_ok, P_fail=P_fail, alpha_c=(P_ok + P_fail) / 2 / MPC_N)
+
+
+# ---------------------------------------------------------------------------
+# Multi-perceptron: capacity on a grid of K and input sparsity
+# ---------------------------------------------------------------------------
+
+MPC_GRID_KS = [1, 10, 20, 50, 100, 150, 200]        # sub-patterns per pattern
+MPC_GRID_MEANS = [1, 10, 20, 50, 100, 150, 200]     # mean number of active afferents per sub-pattern
+MPC_GRID_N_DATASETS = 20
+MPC_GRID_MAX_EPOCHS = 20000
+MPC_GRID_RESOLUTION = 10                            # P resolution of the bisection (alpha: 0.02)
+MPC_GRID_LR_X_MEAN = MPC_LR * MPC_MEAN_ACTIVE       # lr * mean is kept fixed (step size relative to theta)
+
+
+def mpc_grid_std(mean):
+    """Std of the number of active afferents: Poisson-like, std = sqrt(mean)."""
+    return float(np.sqrt(mean))
+
+
+def mpc_grid_lr(mean):
+    """Learning rate for a given sparsity, scaled so that lr * mean stays constant."""
+    return MPC_GRID_LR_X_MEAN / mean
+
+
+def mpc_capacity_grid_name():
+    """File name of the multi-perceptron (K, sparsity) grid scan."""
+    return ex.make_name("capacity_grid", model="multi_perceptron", N=MPC_N, std="sqrt",
+                        lr_x_mean=round(MPC_GRID_LR_X_MEAN, 4), mu=MPC_MU, credit=MPC_CREDIT,
+                        res=MPC_GRID_RESOLUTION, max_epochs=MPC_GRID_MAX_EPOCHS)
+
+
+def mpc_capacity_grid_task(K, mean, dataset):
+    """Capacity of one dataset for one (K, mean), by bisection over P (one task of the grid scan)."""
+    lr = mpc_grid_lr(mean)
+    P_ok, P_fail = mpc.capacity_bisection(
+        MPC_N, K, MPC_THETA, lr, seed=dataset, resolution=MPC_GRID_RESOLUTION,
+        max_epochs=MPC_GRID_MAX_EPOCHS, w_std=MPC_W_STD,
+        mean_active=mean, std_active=mpc_grid_std(mean),
+        mu=MPC_MU, credit=MPC_CREDIT,
+    )
+    return dict(P_ok=P_ok, P_fail=P_fail, alpha_c=(P_ok + P_fail) / 2 / MPC_N, lr=lr)
