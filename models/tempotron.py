@@ -1,8 +1,19 @@
 """Tempotron (Gütig & Sompolinsky, 2006).
 
-Classification of random spike patterns: each of N afferents fires exactly one
-spike, uniformly distributed in [0, T). The tempotron should fire at least once
-for patterns with label 1 and stay silent for patterns with label 0.
+Classification of random spike patterns: the tempotron should fire at least once
+for patterns with label 1 and stay silent for patterns with label 0. Two kinds of
+input patterns:
+
+  once     every afferent fires exactly one spike, uniformly distributed in [0, T)
+           (Gütig & Sompolinsky 2006); make_dataset, data as a (P, N) array
+  poisson  every afferent fires as a Poisson process with rate 1/T, i.e. on average
+           one spike, but 0, 1, 2, ... spikes per pattern (Rubin et al. 2010);
+           make_dataset_poisson, data as lists of spikes (time, afferent)
+
+The membrane potential is integrated exactly (event-based): between two input
+spikes, V is a sum of two exponentials, so its maximum and the first threshold
+crossing are found analytically, without a time grid. Internally, every pattern
+is a list of spikes (time, afferent), so both kinds of data use the same code.
 
 Learning: tempotron rule evaluated at t_max with a momentum term, either with a
 constant learning rate (train_exact, as in the 2006 paper) or with a decaying
@@ -59,6 +70,38 @@ def make_dataset(N, P, T, rng):
     return X, y
 
 
+def make_dataset_poisson(N, P, T, rng, rate=None):
+    """Generate Poisson spike patterns with balanced labels (Rubin et al. 2010).
+
+    Each afferent fires as a Poisson process with the given rate in [0, T): the
+    number of its spikes is Poisson(rate * T), and given the number, the spike times
+    are uniform. With the default rate 1/T, an afferent fires on average once
+    (0 spikes with probability 0.37, 1: 0.37, 2: 0.18, 3 or more: 0.08).
+
+    Parameters
+    ----------
+    N, P, T, rng : as in make_dataset
+    rate         : spikes per ms per afferent (default 1 / T)
+
+    Returns
+    -------
+    times : list of P arrays, the spike times of each pattern in ms
+    affs  : list of P arrays of the same lengths: the afferent of each spike
+    y     : (P,) array of labels in {0, 1}
+    """
+    assert P % 2 == 0, "P must be even for an exact 50/50 label split"
+    rate = 1 / T if rate is None else rate
+    times, affs = [], []
+    for _ in range(P):
+        counts = rng.poisson(rate * T, size=N)           # number of spikes of each afferent
+        aff = np.repeat(np.arange(N), counts)            # e.g. counts [2, 0, 1] -> [0, 0, 2]
+        times.append(rng.uniform(0, T, size=aff.size))
+        affs.append(aff)
+    y = np.repeat([0, 1], P // 2)
+    rng.shuffle(y)
+    return times, affs, y
+
+
 def init_weights(N, rng, std=1e-3):
     """Draw initial weights from a Gaussian with mean 0 and standard deviation std.
 
@@ -108,37 +151,52 @@ def decayed_lr(lr_ini, epoch, tau_decay):
     return lr_ini / (1 + (epoch - 1) / tau_decay)
 
 
-class ExactData:
-    """Per-dataset quantities for exact integration, computed once by prepare_exact.
+# ---------------------------------------------------------------------------
+# Exact (event-based) integration
+# ---------------------------------------------------------------------------
 
-    Attributes
+class ExactData:
+    """Per-dataset quantities for exact integration, computed once by prepare_exact/prepare_spikes.
+
+    Every pattern is a list of spikes (time, afferent) of its own length, so an
+    afferent can fire any number of times (0, 1, 2, ...).
+
+    Attributes (lists with one array per pattern)
     ----------
-    X           : (P, N) original spike times
-    order       : (P, N) indices that sort each pattern's spike times
-    ts          : (P, N) sorted spike times
-    gaps        : (P, N) length of the interval after each sorted spike (last one up to T)
-    em, es      : (P, N) exp((ts - T/2) / tau) for tau_m and tau_s (scaled for numerical range)
-    T, tau_m, tau_s, V0
+    ts          : sorted spike times
+    aff         : afferent of each sorted spike
+    gaps        : length of the interval after each sorted spike (the last one up to T)
+    em, es      : exp((ts - T/2) / tau) for tau_m and tau_s (scaled for numerical range)
+    N, T, tau_m, tau_s, V0
     """
 
-    def __init__(self, X, T, tau_m, tau_s):
+    def __init__(self, times, affs, N, T, tau_m, tau_s):
         assert T / (2 * tau_s) < 600, "T / tau_s too large for the exponential scaling"
-        self.X = X
-        self.T, self.tau_m, self.tau_s = T, tau_m, tau_s
+        self.N, self.T, self.tau_m, self.tau_s = N, T, tau_m, tau_s
         self.V0 = kernel_norm(tau_m, tau_s)
-        self.order = np.argsort(X, axis=1)
-        self.ts = np.take_along_axis(X, self.order, axis=1)
-        self.gaps = np.diff(self.ts, axis=1, append=T)
-        self.em = np.exp((self.ts - T / 2) / tau_m)
-        self.es = np.exp((self.ts - T / 2) / tau_s)
+        self.ts, self.aff, self.gaps, self.em, self.es = [], [], [], [], []
+        for t, a in zip(times, affs):
+            order = np.argsort(t)
+            ts = np.asarray(t)[order]
+            self.ts.append(ts)
+            self.aff.append(np.asarray(a)[order])
+            self.gaps.append(np.diff(ts, append=T))
+            self.em.append(np.exp((ts - T / 2) / tau_m))
+            self.es.append(np.exp((ts - T / 2) / tau_s))
 
 
 def prepare_exact(X, T, tau_m, tau_s):
-    """Sort the spikes of all patterns and precompute the exponentials (once per dataset).
+    """ExactData for once data: X (P, N), X[p, i] = the spike time of afferent i in pattern p.
 
-    Memory is about 5 * P * N * 8 bytes, e.g. 20 MB for N = 500, P = 1000.
+    Memory is about 6 * P * N * 8 bytes, e.g. 24 MB for N = 500, P = 1000.
     """
-    return ExactData(X, T, tau_m, tau_s)
+    P, N = X.shape
+    return ExactData(list(X), [np.arange(N)] * P, N, T, tau_m, tau_s)
+
+
+def prepare_spikes(times, affs, N, T, tau_m, tau_s):
+    """ExactData for spike lists, e.g. from make_dataset_poisson."""
+    return ExactData(times, affs, N, T, tau_m, tau_s)
 
 
 def _interval_values(a, b, u, tau_m, tau_s, V0):
@@ -172,12 +230,23 @@ def _interval_max(a, b, D, tau_m, tau_s, V0):
     return cand_v[i, idx], cand_u[i, idx]
 
 
+def _coefficients(data, p, w):
+    """Interval coefficients a, b just after each sorted input spike of pattern p.
+
+    Between spike k and spike k+1: V(t_k + u) = V0 * (a_k exp(-u/tau_m) - b_k exp(-u/tau_s)).
+    """
+    ws = w[data.aff[p]]                                 # weight of each spike
+    a = np.cumsum(ws * data.em[p]) / data.em[p]
+    b = np.cumsum(ws * data.es[p]) / data.es[p]
+    return a, b
+
+
 def forward_exact(data, p, w, theta, shunt=True):
     """Exact output decision, t_max and learning gradient for pattern p.
 
     Parameters
     ----------
-    data  : ExactData from prepare_exact
+    data  : ExactData from prepare_exact or prepare_spikes
     p     : pattern index
     w     : (N,) weights
     theta : firing threshold
@@ -186,17 +255,16 @@ def forward_exact(data, p, w, theta, shunt=True):
     Returns
     -------
     spiked : bool, whether V reaches the threshold
-    grad   : (N,) K(t_max - t_i) for all non-shunted inputs, i.e. dV(t_max)/dw
+    grad   : (N,) dV(t_max)/dw: for every afferent, the sum of K(t_max - t_s) over its
+             non-shunted spikes s (one term per spike, 0 for afferents without spikes)
     t_max  : time of the maximal (shunted) potential
     V_max  : V(t_max)
     """
     tau_m, tau_s, V0 = data.tau_m, data.tau_s, data.V0
-    ts, order, D = data.ts[p], data.order[p], data.gaps[p]
-    ws = w[order]
-
-    # Interval coefficients just after each sorted input spike
-    a = np.cumsum(ws * data.em[p]) / data.em[p]
-    b = np.cumsum(ws * data.es[p]) / data.es[p]
+    ts, aff, D = data.ts[p], data.aff[p], data.gaps[p]
+    if len(ts) == 0:                                    # no input spikes: V = 0 throughout
+        return False, np.zeros(data.N), 0.0, 0.0
+    a, b = _coefficients(data, p, w)
 
     v_max, u_max = _interval_max(a, b, D, tau_m, tau_s, V0)
     above = np.flatnonzero(v_max >= theta)
@@ -205,20 +273,16 @@ def forward_exact(data, p, w, theta, shunt=True):
     if spiked and shunt:
         k = above[0]                                    # interval containing the output spike
         # No further inputs after the output spike: the interval extends up to T
-        D_ext = data.T - ts[k]
-        v_k, u_k = _interval_max(a[k], b[k], D_ext, tau_m, tau_s, V0)
+        v_k, u_k = _interval_max(a[k], b[k], data.T - ts[k], tau_m, tau_s, V0)
         t_max, V_max = ts[k] + u_k[0], v_k[0]
-        keep = np.arange(len(ts)) <= k                  # inputs before the output spike
+        n_keep = k + 1                                  # spikes up to the output spike
     else:
         k = np.argmax(v_max)
         t_max, V_max = ts[k] + u_max[k], v_max[k]
-        keep = None
+        n_keep = len(ts)
 
-    g_sorted = kernel(t_max - ts, tau_m, tau_s)         # 0 for inputs after t_max
-    if keep is not None:
-        g_sorted = g_sorted * keep
-    grad = np.empty_like(g_sorted)
-    grad[order] = g_sorted
+    g = kernel(t_max - ts[:n_keep], tau_m, tau_s)      # 0 for spikes after t_max
+    grad = np.bincount(aff[:n_keep], weights=g, minlength=data.N)
     return spiked, grad, float(t_max), float(V_max)
 
 
@@ -227,21 +291,47 @@ def potential_exact(data, p, w, t_eval, theta, shunt=True):
 
     For plotting and validation only; learning uses forward_exact.
     """
-    spiked, _, _, _ = forward_exact(data, p, w, theta, shunt=False)
-    X_p = data.X[p]
-    w_eff = w
-    if spiked and shunt:
-        # Inputs up to and including the interval with the output spike are kept
-        ts, order, D = data.ts[p], data.order[p], data.gaps[p]
-        ws = w[order]
-        a = np.cumsum(ws * data.em[p]) / data.em[p]
-        b = np.cumsum(ws * data.es[p]) / data.es[p]
-        v_max, _ = _interval_max(a, b, D, data.tau_m, data.tau_s, data.V0)
-        k = np.flatnonzero(v_max >= theta)[0]
-        w_eff = np.where(X_p <= ts[k], w, 0.0)
-    K_eval = kernel(np.asarray(t_eval)[None, :] - X_p[:, None], data.tau_m, data.tau_s)
-    return w_eff @ K_eval
+    ts, aff = data.ts[p], data.aff[p]
+    n_keep = len(ts)
+    if shunt and len(ts) > 0:
+        a, b = _coefficients(data, p, w)
+        v_max, _ = _interval_max(a, b, data.gaps[p], data.tau_m, data.tau_s, data.V0)
+        above = np.flatnonzero(v_max >= theta)
+        if above.size > 0:
+            n_keep = above[0] + 1                       # spikes up to the output spike
+    t_eval = np.asarray(t_eval, dtype=float)
+    K_eval = kernel(t_eval[None, :] - ts[:n_keep, None], data.tau_m, data.tau_s)
+    return w[aff[:n_keep]] @ K_eval
 
+
+def spike_time_exact(data, p, w, theta):
+    """Exact time of the first output spike (first threshold crossing) of pattern p.
+
+    Returns None if V never reaches theta.
+    """
+    tau_m, tau_s, V0 = data.tau_m, data.tau_s, data.V0
+    ts, D = data.ts[p], data.gaps[p]
+    if len(ts) == 0:
+        return None
+    a, b = _coefficients(data, p, w)
+
+    v_max, u_max = _interval_max(a, b, D, tau_m, tau_s, V0)
+    above = np.flatnonzero(v_max >= theta)
+    if above.size == 0:
+        return None
+    k = above[0]                                   # first interval in which V reaches theta
+
+    def f(u):
+        return _interval_values(a[k], b[k], u, tau_m, tau_s, V0) - theta
+
+    if f(0.0) >= 0:                                # threshold reached exactly at the input spike
+        return float(ts[k])
+    return float(ts[k] + brentq(f, 0.0, u_max[k]))
+
+
+# ---------------------------------------------------------------------------
+# Training
+# ---------------------------------------------------------------------------
 
 def run_epoch_exact(w, dw, data, y, theta, lr, mu, rng):
     """One online learning cycle over all patterns in random order.
@@ -281,7 +371,7 @@ def train_exact(data, y, theta, lr, mu, max_epochs, rng, w_init, verbose=25):
 
     Parameters
     ----------
-    data       : ExactData from prepare_exact
+    data       : ExactData from prepare_exact or prepare_spikes
     y          : (P,) labels in {0, 1}
     theta      : firing threshold
     lr         : learning rate (Gütig & Sompolinsky 2006: 1e-4 * V0)
@@ -339,28 +429,3 @@ def train_decay_exact(data, y, theta, lr_ini, mu, max_epochs, rng, w_init,
     if verbose:
         print(f"Not converged after {max_epochs} epochs (min. {min(history)} errors)")
     return w, history, False
-
-
-def spike_time_exact(data, p, w, theta):
-    """Exact time of the first output spike (first threshold crossing) of pattern p.
-
-    Returns None if V never reaches theta.
-    """
-    tau_m, tau_s, V0 = data.tau_m, data.tau_s, data.V0
-    ts, order, D = data.ts[p], data.order[p], data.gaps[p]
-    ws = w[order]
-    a = np.cumsum(ws * data.em[p]) / data.em[p]
-    b = np.cumsum(ws * data.es[p]) / data.es[p]
-
-    v_max, u_max = _interval_max(a, b, D, tau_m, tau_s, V0)
-    above = np.flatnonzero(v_max >= theta)
-    if above.size == 0:
-        return None
-    k = above[0]                                   # first interval in which V reaches theta
-
-    def f(u):
-        return _interval_values(a[k], b[k], u, tau_m, tau_s, V0) - theta
-
-    if f(0.0) >= 0:                                # threshold reached exactly at the input spike
-        return float(ts[k])
-    return float(ts[k] + brentq(f, 0.0, u_max[k]))
