@@ -20,6 +20,7 @@ ALPHA=${ALPHAS[$SLURM_ARRAY_TASK_ID]}
 
 export OMP_NUM_THREADS=1 OPENBLAS_NUM_THREADS=1 MKL_NUM_THREADS=1
 
+module load python-3.10.2-gcc-8.5.0-f6bu3ie
 source venv/bin/activate
 
 echo "Task $SLURM_ARRAY_TASK_ID: alpha = $ALPHA on $(hostname)"
