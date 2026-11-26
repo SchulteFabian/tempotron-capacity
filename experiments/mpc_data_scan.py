@@ -32,9 +32,9 @@ N, THETA, W_STD = mpc.N, mpc.THETA, mpc.W_STD
 MU, CREDIT = mpc.MU, mpc.CREDIT
 LR_X_MEAN = mpc.LR * mpc.MEAN_ACTIVE         # lr * mean is kept fixed across K (0.438)
 DATA_TYPES = ["once", "gauss"]
-KS = [10, 20, 50, 100, 150, 200]
+KS = [5, 10, 15, 20, 25, 30, 40, 50, 100]
 N_DATASETS = 5
-MAX_EPOCHS = 5000
+MAX_EPOCHS = 20000
 RESOLUTION = 10                              # P resolution of the bisection (alpha: 0.02)
 
 

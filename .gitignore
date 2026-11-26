@@ -17,3 +17,9 @@ logs/
 old_*.py
 # Old results kept locally, not part of the project
 results/archive/
+
+
+# Local notebooks and exploration results, not part of the project
+Exploration.ipynb
+TestTestTest.ipynb
+results/explore_*

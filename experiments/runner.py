@@ -1,9 +1,4 @@
-"""Shared infrastructure for the experiments: file names, saving, loading and resumable scans.
-
-Every experiment script in this folder uses these functions, and Summary.ipynb
-uses load_results to read what the scripts computed. All results are stored in
-the folder results/ of the project, all figures in figures/.
-"""
+""" Shared infrastructure for the experiments: file names, saving, loading and resumable scans. """
 
 import argparse
 import json
@@ -57,6 +52,8 @@ def even_P(alpha, N):
 # ---------------------------------------------------------------------------
 # Saving and loading
 # ---------------------------------------------------------------------------
+
+
 
 def save_table(df, name):
     """Save a results table as results/<name>.csv."""

@@ -1,13 +1,4 @@
-"""Classic perceptron (Rosenblatt) as a reference model.
-
-Random dense patterns x in {0, 1}^N with balanced labels. The perceptron
-outputs 1 if w . x >= theta (default theta = 0, no bias).
-
-For this setting the capacity is known exactly: at P = 2N, half of all random
-problems are linearly separable (Cover 1965), and the perceptron rule is
-guaranteed to find a solution whenever one exists (perceptron convergence
-theorem). It therefore serves as a check of the capacity measurement.
-"""
+""" Classic perceptron (Rosenblatt) as a reference model. """
 
 import time
 

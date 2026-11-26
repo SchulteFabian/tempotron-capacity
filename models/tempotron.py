@@ -4,16 +4,9 @@ Classification of random spike patterns: each of N afferents fires exactly one
 spike, uniformly distributed in [0, T). The tempotron should fire at least once
 for patterns with label 1 and stay silent for patterns with label 0.
 
-The membrane potential is integrated exactly (event-based): between two input
-spikes, V is a sum of two exponentials, so its maximum and the first
-threshold crossing are found analytically, without a time grid.
-
 Learning: tempotron rule evaluated at t_max with a momentum term, either with a
 constant learning rate (train_exact, as in the 2006 paper) or with a decaying
 learning rate (train_decay_exact, as in Gütig & Sompolinsky 2009).
-
-Reference: R. Gütig and H. Sompolinsky, "The tempotron: a neuron that learns
-spike timing-based decisions", Nat. Neurosci. 9, 420-428 (2006).
 """
 
 import time

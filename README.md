@@ -26,7 +26,11 @@ The tempotron is simulated by **exact event-based integration**. The membrane po
 
 **What makes the tempotron fire?** The potential at an output spike is almost entirely due to the inputs in the preceding 20 ms. These windows contain 21.9 ± 4.5 input spikes, compared with 20.0 ± 4.4 in random windows. Firing is therefore driven mainly by *which* afferents are active in a short window, not by how many. This motivates the multi-perceptron.
 
-![Window analysis](figures/tempotron_window_analysis.png)
+![Window analysis](figures/tempotron_window_analysis_20ms.png)
+
+The middle plot suggests that the firing is largely due to the inputs being positive in the last 5ms before the spike. We also analysed these 5ms windows.
+
+![Window analysis](figures/tempotron_window_analysis_5ms.png)
 
 **Multi-perceptron.** Each pattern is a set of $K$ binary sub-patterns, with window statistics taken from the trained tempotron. Capacity rises steeply from the perceptron value at $K = 1$, then grows slowly. It approaches the tempotron's capacity but stays below it up to $K = 300$.
 

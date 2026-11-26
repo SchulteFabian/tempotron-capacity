@@ -1,7 +1,6 @@
 """Single perceptron training run, used in the Summary to show the learning curve.
 
-Trains one dataset of P patterns and saves the trained weights and the number
-of errors per epoch.
+Trains one dataset of P patterns and saves the trained weights and the number of errors per epoch.
 
 Usage (from the project folder):
 
@@ -41,6 +40,7 @@ def compute():
 
 
 def load():
+    """Loads the results of this single training run. Called in the Summary"""
     return runner.load_results(result_name(), "perceptron_single", kind="npz")
 
 
