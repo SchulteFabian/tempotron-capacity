@@ -16,7 +16,7 @@
 #SBATCH --output=logs/%x_%a.out
 
 # Most bins and largest alpha first (index 0 = 50 bins, alpha 3.3), so the slowest tasks start earliest
-BINS=(50 25 16 10)
+BINS=(40 35 30 20)
 ALPHAS=(3.3 3.2 3.1 3.0 2.8 2.6)
 
 B=${BINS[$((SLURM_ARRAY_TASK_ID / 6))]}
