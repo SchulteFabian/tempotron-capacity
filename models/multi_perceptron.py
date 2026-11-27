@@ -161,8 +161,24 @@ def run_epoch(w, dw, X, y, theta, lr, mu, rng, credit="first"):
     return n_errors
 
 
-def train(X, y, theta, lr, max_epochs, rng, w_init, mu=0.0, credit="first", verbose=25):
+def train(X, y, theta, lr, max_epochs, rng, w_init, mu=0.0, credit="first", verbose=25,
+          tau_decay=None):
     """Train until an epoch is error-free or max_epochs is reached.
+
+    Parameters
+    ----------
+    X          : (P, K, N) sub-patterns (binary or spike counts)
+    y          : (P,) labels in {0, 1}
+    theta      : firing threshold
+    lr         : learning rate (in the first epoch, if tau_decay is given)
+    max_epochs : maximum number of learning cycles
+    rng        : random Generator for the pattern order
+    w_init     : initial weights (not modified)
+    mu         : momentum
+    credit     : "first" or "max", see forward
+    verbose    : print progress every `verbose` epochs; 0 = silent
+    tau_decay  : None (default) = constant learning rate; otherwise the learning rate in
+                 epoch l is lr / (1 + (l - 1) / tau_decay), as for the tempotron
 
     Returns
     -------
@@ -175,7 +191,8 @@ def train(X, y, theta, lr, max_epochs, rng, w_init, mu=0.0, credit="first", verb
     history = []
     t0 = time.time()
     for epoch in range(1, max_epochs + 1):
-        n_err = run_epoch(w, dw, X, y, theta, lr, mu, rng, credit)
+        lr_epoch = lr if tau_decay is None else lr / (1 + (epoch - 1) / tau_decay)
+        n_err = run_epoch(w, dw, X, y, theta, lr_epoch, mu, rng, credit)
         history.append(n_err)
         if verbose and epoch % verbose == 0:
             print(f"Epoch {epoch:5d}: {n_err:4d} errors  ({time.time() - t0:.0f} s)")

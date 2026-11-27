@@ -48,12 +48,14 @@ N_DATASETS = 20
 MAX_EPOCHS = 20000
 
 
-def result_name(data="poisson", window=None):
-    return runner.make_name("capacity_binned", model="multi_perceptron", data=data, N=N, T=T,
-                            window="bin" if window is None else window,
-                            lr_x_mean=round(LR_X_MEAN, 4), mu=MU, credit=CREDIT,
-                            n=N_DATASETS, max_epochs=MAX_EPOCHS)
-
+def result_name(data="poisson", window=None, tau_decay=None):
+    params = dict(model="multi_perceptron", data=data, N=N, T=T,
+                  window="bin" if window is None else window,
+                  lr_x_mean=round(LR_X_MEAN, 4), mu=MU, credit=CREDIT,
+                  n=N_DATASETS, max_epochs=MAX_EPOCHS)
+    if tau_decay is not None:     # files with a constant learning rate keep their old names
+        params["decay"] = tau_decay
+    return runner.make_name("capacity_binned", **params)
 
 def tasks(bins, alphas):
     # Largest alpha and most bins first: these runs take longest
@@ -108,8 +110,11 @@ def bin_spikes(times, affs, N, T, step, window=None):
     return X
 
 
-def task(bins, alpha, dataset, data="poisson", window=None):
-    """Bin one tempotron dataset into `bins` windows and train the multi-perceptron on it."""
+def task(bins, alpha, dataset, data="poisson", window=None, tau_decay=None):
+    """Bin one tempotron dataset into `bins` windows and train the multi-perceptron on it.
+
+    tau_decay : None = constant learning rate; otherwise decaying as for the tempotron.
+    """
     step = T / bins
     window = step if window is None else window
     P = runner.even_P(alpha, N)
@@ -118,12 +123,12 @@ def task(bins, alpha, dataset, data="poisson", window=None):
     lr = LR_X_MEAN / (N * window / T)                   # expected spikes per window: N * window / T
     w0 = mpc.init_weights(N, np.random.default_rng([dataset, 1]), std=W_STD)
     _, h, conv = mpc.train(X, y, THETA, lr, MAX_EPOCHS, np.random.default_rng([dataset, 2]), w0,
-                           mu=MU, credit=CREDIT, verbose=0)
+                           mu=MU, credit=CREDIT, verbose=0, tau_decay=tau_decay)
     return dict(epochs=len(h), converged=bool(conv), min_errors=int(min(h)))
 
 
-def load(data="poisson", window=None):
-    return runner.load_results(result_name(data, window), "mpc_binned_scan")
+def load(data="poisson", window=None, tau_decay=None):
+    return runner.load_results(result_name(data, window, tau_decay), "mpc_binned_scan")
 
 
 def _arguments(parser):
@@ -132,16 +137,19 @@ def _arguments(parser):
     parser.add_argument("--alphas", type=float, nargs="+", default=ALPHAS)
     parser.add_argument("--window", type=float, default=None,
                         help="window length in ms (default: T / bins, i.e. disjoint bins)")
+    parser.add_argument("--tau-decay", type=float, default=None,
+                        help="learning rate decay in epochs (default: constant learning rate)")
 
 
 def main():
     args = runner.parse_args("Multi-perceptron on binned tempotron spike data", _arguments)
     print(f"Binned multi-perceptron: data = {args.data}, bins = {args.bins}, alphas = {args.alphas}, "
-          f"window = {args.window or 'T/bins'}, {N_DATASETS} datasets, max_epochs = {MAX_EPOCHS}, "
-          f"n_jobs = {args.n_jobs}")
-    df = runner.run_experiment(args, result_name(args.data, args.window),
+          f"window = {args.window or 'T/bins'}, lr decay = {args.tau_decay or 'none'}, "
+          f"{N_DATASETS} datasets, max_epochs = {MAX_EPOCHS}, n_jobs = {args.n_jobs}")
+    df = runner.run_experiment(args, result_name(args.data, args.window, args.tau_decay),
                                tasks(args.bins, args.alphas),
-                               partial(task, data=args.data, window=args.window))
+                               partial(task, data=args.data, window=args.window,
+                                       tau_decay=args.tau_decay))
     print("\nFraction learned (rows: alpha, columns: bins):")
     print(runner.summarize(df, ["alpha", "bins"])["frac_converged"].unstack("bins").round(2).to_string())
 
