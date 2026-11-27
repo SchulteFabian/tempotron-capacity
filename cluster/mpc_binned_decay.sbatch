@@ -6,14 +6,14 @@
 # Merge:    when all tasks are done:  python -m experiments.mpc_binned_scan --tau-decay 2000 --merge
 
 #SBATCH --job-name=mpc_decay
-#SBATCH --array=0-23
+#SBATCH --array=0-17
 #SBATCH --cpus-per-task=20          # = datasets per (bins, alpha), one core each
 #SBATCH --mem-per-cpu=1500M
 #SBATCH --time=06:00:00
 #SBATCH --output=logs/%x_%a.out
 
-BINS=(60 50 40 35)
-ALPHAS=(3.4 3.3 3.2 3.1 3.0 2.8)
+BINS=(4 3 2)
+ALPHAS=(3.0 2.8 2.6 2.4 2.2 2.0)
 
 B=${BINS[$((SLURM_ARRAY_TASK_ID / 6))]}
 ALPHA=${ALPHAS[$((SLURM_ARRAY_TASK_ID % 6))]}
