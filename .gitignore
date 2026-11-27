@@ -20,6 +20,5 @@ results/archive/
 
 
 # Local notebooks and exploration results, not part of the project
-Exploration.ipynb
-TestTestTest.ipynb
+Xplr_*
 results/explore_*

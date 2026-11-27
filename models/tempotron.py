@@ -46,21 +46,20 @@ W_STD = 1e-3                      # std of the initial weights
 # ---------------------------------------------------------------------------
 
 def make_dataset(N, P, T, rng):
-    """Generate random spike patterns with balanced labels.
-
-    Each afferent fires exactly once, at a time drawn uniformly from [0, T).
-    Exactly P/2 patterns get label 1, the rest label 0.
+    """Generate random spike patterns with balanced labels (Gütig et al. 2006).
 
     Parameters
     ----------
     N   : number of afferents
     P   : number of patterns (must be even)
     T   : pattern duration in ms
-    rng : numpy random Generator
+    rng : numpy random Generator (first the spike times are drawn, then the labels
+          are shuffled)
 
     Returns
     -------
-    X : (P, N) array of spike times in ms
+    X : (P, N) array of spike times in ms; X[p, i] is the spike time of afferent i
+        in pattern p (unsorted, in the order of the afferents)
     y : (P,) array of labels in {0, 1}
     """
     assert P % 2 == 0, "P must be even for an exact 50/50 label split"
@@ -73,21 +72,20 @@ def make_dataset(N, P, T, rng):
 def make_dataset_poisson(N, P, T, rng, rate=None):
     """Generate Poisson spike patterns with balanced labels (Rubin et al. 2010).
 
-    Each afferent fires as a Poisson process with the given rate in [0, T): the
-    number of its spikes is Poisson(rate * T), and given the number, the spike times
-    are uniform. With the default rate 1/T, an afferent fires on average once
-    (0 spikes with probability 0.37, 1: 0.37, 2: 0.18, 3 or more: 0.08).
-
     Parameters
     ----------
-    N, P, T, rng : as in make_dataset
+    N, P, T, rng : as in make_dataset (P must be even)
     rate         : spikes per ms per afferent (default 1 / T)
 
     Returns
     -------
-    times : list of P arrays, the spike times of each pattern in ms
-    affs  : list of P arrays of the same lengths: the afferent of each spike
+    times : list of P arrays, the spike times of each pattern in ms (unsorted);
+            the arrays have different lengths
+    affs  : list of P integer arrays of the same lengths: affs[p][s] is the afferent
+            that emitted spike s of pattern p
     y     : (P,) array of labels in {0, 1}
+
+    The result is meant for prepare_spikes, which turns it into an ExactData object.
     """
     assert P % 2 == 0, "P must be even for an exact 50/50 label split"
     rate = 1 / T if rate is None else rate
@@ -105,7 +103,15 @@ def make_dataset_poisson(N, P, T, rng, rate=None):
 def init_weights(N, rng, std=1e-3):
     """Draw initial weights from a Gaussian with mean 0 and standard deviation std.
 
-    The default std = 1e-3 follows Gütig & Sompolinsky (2006).
+    Parameters
+    ----------
+    N   : number of afferents
+    rng : numpy random Generator
+    std : standard deviation of the weights
+
+    Returns
+    -------
+    w : (N,) array of initial weights
     """
     return rng.normal(0, std, size=N)
 
@@ -117,8 +123,14 @@ def init_weights(N, rng, std=1e-3):
 def kernel_norm(tau_m, tau_s):
     """Normalization factor V0 such that the kernel's maximum equals 1.
 
-    The maximum of exp(-s/tau_m) - exp(-s/tau_s) lies at
-    s* = tau_m * tau_s / (tau_m - tau_s) * ln(tau_m / tau_s).
+    Parameters
+    ----------
+    tau_m : membrane time constant in ms
+    tau_s : synaptic time constant in ms (must differ from tau_m)
+
+    Returns
+    -------
+    V0 : float, the normalization factor
     """
     r = tau_m / tau_s
     return r ** (r / (r - 1)) / (r - 1)
@@ -131,7 +143,15 @@ LR = 1e-4 * V0                    # initial learning rate (Gütig & Sompolinsky 
 def kernel(s, tau_m, tau_s):
     """Postsynaptic potential kernel.
 
-    K(s) = V0 * (exp(-s/tau_m) - exp(-s/tau_s)) for s >= 0, and 0 for s < 0.
+    Parameters
+    ----------
+    s     : time since the input spike in ms (number or array of any shape)
+    tau_m : membrane time constant in ms
+    tau_s : synaptic time constant in ms
+
+    Returns
+    -------
+    K : array of the same shape as s
     """
     s = np.asarray(s, dtype=float)
     sp = np.maximum(s, 0.0)  # avoids exp of large positive numbers for s < 0
@@ -142,9 +162,16 @@ def kernel(s, tau_m, tau_s):
 def decayed_lr(lr_ini, epoch, tau_decay):
     """Learning rate in a given epoch (1-based).
 
-    lr(l) = lr_ini / (1 + (l - 1) / tau_decay).
-    The 2009 paper uses tau_decay = 1e4, i.e. lr_ini / (1 + 1e-4 (l - 1)).
-    tau_decay = None or float("inf") gives a constant learning rate.
+    Parameters
+    ----------
+    lr_ini    : learning rate in the first epoch
+    epoch     : current epoch, starting at 1
+    tau_decay : decay time in epochs; None or float("inf") gives a constant
+                learning rate (as in the 2006 paper)
+
+    Returns
+    -------
+    lr : float, the learning rate in this epoch
     """
     if tau_decay is None:
         return lr_ini
@@ -158,8 +185,14 @@ def decayed_lr(lr_ini, epoch, tau_decay):
 class ExactData:
     """Per-dataset quantities for exact integration, computed once by prepare_exact/prepare_spikes.
 
-    Every pattern is a list of spikes (time, afferent) of its own length, so an
-    afferent can fire any number of times (0, 1, 2, ...).
+    Parameters (of ExactData(...); usually called through prepare_exact or prepare_spikes)
+    ----------
+    times : list of P arrays, the spike times of each pattern (any order)
+    affs  : list of P integer arrays of the same lengths, the afferent of each spike
+    N     : number of afferents (length of the weight vector)
+    T     : pattern duration in ms
+    tau_m : membrane time constant in ms
+    tau_s : synaptic time constant in ms
 
     Attributes (lists with one array per pattern)
     ----------
@@ -186,31 +219,88 @@ class ExactData:
 
 
 def prepare_exact(X, T, tau_m, tau_s):
-    """ExactData for once data: X (P, N), X[p, i] = the spike time of afferent i in pattern p.
+    """ExactData for once data (every afferent fires exactly once).
 
-    Memory is about 6 * P * N * 8 bytes, e.g. 24 MB for N = 500, P = 1000.
+    Turns every row X[p] into a spike list: the spike times X[p] with the
+    afferents 0, 1, ..., N-1.
+
+    Parameters
+    ----------
+    X     : (P, N) array of spike times; X[p, i] is the spike time of afferent i in
+            pattern p (as returned by make_dataset)
+    T     : pattern duration in ms
+    tau_m : membrane time constant in ms
+    tau_s : synaptic time constant in ms
+
+    Returns
+    -------
+    data : ExactData
     """
     P, N = X.shape
     return ExactData(list(X), [np.arange(N)] * P, N, T, tau_m, tau_s)
 
 
 def prepare_spikes(times, affs, N, T, tau_m, tau_s):
-    """ExactData for spike lists, e.g. from make_dataset_poisson."""
+    """ExactData for spike lists with any number of spikes per afferent.
+
+    Parameters
+    ----------
+    times : list of P arrays of spike times (as returned by make_dataset_poisson)
+    affs  : list of P integer arrays of the same lengths, the afferent of each spike
+    N     : number of afferents
+    T     : pattern duration in ms
+    tau_m : membrane time constant in ms
+    tau_s : synaptic time constant in ms
+
+    Returns
+    -------
+    data : ExactData
+    """
     return ExactData(times, affs, N, T, tau_m, tau_s)
 
 
 def _interval_values(a, b, u, tau_m, tau_s, V0):
-    """V(t_k + u) for interval coefficients a, b (all arrays broadcast)."""
+    """V(t_k + u) inside an interval between two input spikes.
+
+    Between input spike k and input spike k + 1 no new input arrives, so the
+    potential is V(t_k + u) = V0 * (a_k exp(-u/tau_m) - b_k exp(-u/tau_s)),
+    with the interval coefficients a_k, b_k from _coefficients.
+
+    Parameters
+    ----------
+    a, b         : interval coefficients (numbers or arrays)
+    u            : time since the start of the interval in ms (number or array)
+    tau_m, tau_s : time constants in ms
+    V0           : kernel normalization
+
+    Returns
+    -------
+    V : array, broadcast from a, b and u
+    """
     return V0 * (a * np.exp(-u / tau_m) - b * np.exp(-u / tau_s))
 
 
 def _interval_max(a, b, D, tau_m, tau_s, V0):
     """Maximum of V and its position u in each interval [0, D].
 
+    The maximum of V(t_k + u) = V0 (a e^{-u/tau_m} - b e^{-u/tau_s}) on [0, D] lies
+    at the start (u = 0), at the end (u = D), or where dV/du = 0, i.e. at
+    u* = ln(b tau_m / (a tau_s)) / (1/tau_s - 1/tau_m). u* is a maximum only if
+    a > 0 and b > 0, and lies in the interval only if 0 < u* < D. The function
+    evaluates all candidates and takes the largest; it works on all intervals of a
+    pattern at once.
+
+    Parameters
+    ----------
+    a, b         : interval coefficients, numbers or arrays of the same length
+    D            : interval lengths in ms (number or array of the same length)
+    tau_m, tau_s : time constants in ms
+    V0           : kernel normalization
+
     Returns
     -------
-    v_max : maximal value of V in each interval
-    u_max : position of the maximum within the interval
+    v_max : array, maximal value of V in each interval
+    u_max : array, position of the maximum within each interval (0 <= u_max <= D)
     """
     a, b, D = np.atleast_1d(a, b, D)
     c = 1 / tau_s - 1 / tau_m
@@ -233,7 +323,21 @@ def _interval_max(a, b, D, tau_m, tau_s, V0):
 def _coefficients(data, p, w):
     """Interval coefficients a, b just after each sorted input spike of pattern p.
 
-    Between spike k and spike k+1: V(t_k + u) = V0 * (a_k exp(-u/tau_m) - b_k exp(-u/tau_s)).
+    Between spike k and spike k+1: V(t_k + u) = V0 * (a_k exp(-u/tau_m) - b_k exp(-u/tau_s)),
+    with a_k = sum_{j <= k} w_j exp(-(t_k - t_j)/tau_m), the contributions of all spikes
+    up to k decayed until t_k (b_k the same with tau_s). They are computed for all k at
+    once as cumsum(w_j e^{t_j/tau}) / e^{t_k/tau}, with the precomputed exponentials
+    data.em and data.es.
+
+    Parameters
+    ----------
+    data : ExactData
+    p    : pattern index
+    w    : (N,) weights
+
+    Returns
+    -------
+    a, b : arrays with one entry per spike of pattern p (in time order)
     """
     ws = w[data.aff[p]]                                 # weight of each spike
     a = np.cumsum(ws * data.em[p]) / data.em[p]
@@ -243,6 +347,13 @@ def _coefficients(data, p, w):
 
 def forward_exact(data, p, w, theta, shunt=True):
     """Exact output decision, t_max and learning gradient for pattern p.
+
+    Finds the maximum of V in every interval between input spikes (_interval_max).
+    The tempotron fires if one of them reaches theta. With shunting, all inputs after
+    the first output spike are ignored, so t_max is the maximum of the potential
+    continued from that interval up to T. Without an output spike, t_max is the
+    global maximum of V. The gradient of V(t_max) with respect to the weights is
+    what the tempotron learning rule uses.
 
     Parameters
     ----------
@@ -289,7 +400,23 @@ def forward_exact(data, p, w, theta, shunt=True):
 def potential_exact(data, p, w, t_eval, theta, shunt=True):
     """V(t) of pattern p evaluated at arbitrary times t_eval, with exact shunting.
 
-    For plotting and validation only; learning uses forward_exact.
+    Sums w_i K(t - t_s) directly over the spikes. With shunting, only the spikes up
+    to the first output spike count (found as in forward_exact). Slower than the
+    interval formulas, but gives V at any times; for plotting and validation only,
+    learning uses forward_exact.
+
+    Parameters
+    ----------
+    data   : ExactData
+    p      : pattern index
+    w      : (N,) weights
+    t_eval : times in ms at which V is evaluated (number or 1D array)
+    theta  : firing threshold (determines where shunting starts)
+    shunt  : ignore inputs after the first output spike
+
+    Returns
+    -------
+    V : array of the same length as t_eval
     """
     ts, aff = data.ts[p], data.aff[p]
     n_keep = len(ts)
@@ -307,7 +434,23 @@ def potential_exact(data, p, w, t_eval, theta, shunt=True):
 def spike_time_exact(data, p, w, theta):
     """Exact time of the first output spike (first threshold crossing) of pattern p.
 
-    Returns None if V never reaches theta.
+    Finds the first interval in which V reaches theta. In this interval V starts
+    below theta and reaches it at the latest at the interval maximum u_max, so
+    V(t_k + u) - theta changes sign on [0, u_max]; its zero is found with Brent's
+    method (scipy.optimize.brentq). Used for the window analysis (which inputs arrive
+    shortly before the output spike).
+
+    Parameters
+    ----------
+    data  : ExactData
+    p     : pattern index
+    w     : (N,) weights
+    theta : firing threshold
+
+    Returns
+    -------
+    t_spike : float, time of the first threshold crossing in ms, or None if V
+              never reaches theta
     """
     tau_m, tau_s, V0 = data.tau_m, data.tau_s, data.V0
     ts, D = data.ts[p], data.gaps[p]
@@ -341,9 +484,21 @@ def run_epoch_exact(w, dw, data, y, theta, lr, mu, rng):
     forward_exact). Correct patterns cause no update. w and dw are modified
     in place.
 
+    Parameters
+    ----------
+    w     : (N,) weights, updated in place
+    dw    : (N,) last weight change (momentum memory), updated in place
+    data  : ExactData
+    y     : (P,) labels in {0, 1}
+    theta : firing threshold
+    lr    : learning rate in this epoch
+    mu    : momentum: fraction of the previous update added to the new one
+    rng   : random Generator for the order of the patterns
+
     Returns
     -------
-    n_errors : number of misclassified patterns during this epoch
+    n_errors : number of misclassified patterns during this epoch (each counted
+               when it was presented, i.e. with the weights at that moment)
     """
     n_errors = 0
     for p in rng.permutation(len(y)):
@@ -359,7 +514,22 @@ def run_epoch_exact(w, dw, data, y, theta, lr, mu, rng):
 
 
 def count_errors_exact(w, data, y, theta):
-    """Number of misclassified patterns with frozen weights (exact integration)."""
+    """Number of misclassified patterns with frozen weights (exact integration).
+
+    Unlike run_epoch_exact, the weights are not changed, so every pattern is
+    evaluated with the same w (e.g. to check a trained tempotron).
+
+    Parameters
+    ----------
+    w     : (N,) weights
+    data  : ExactData
+    y     : (P,) labels in {0, 1}
+    theta : firing threshold
+
+    Returns
+    -------
+    n_errors : int, number of patterns for which "fires" differs from the label
+    """
     return sum(forward_exact(data, p, w, theta)[0] != bool(y[p]) for p in range(len(y)))
 
 
@@ -407,10 +577,32 @@ def train_exact(data, y, theta, lr, mu, max_epochs, rng, w_init, verbose=25):
 
 def train_decay_exact(data, y, theta, lr_ini, mu, max_epochs, rng, w_init,
                       tau_decay=1e4, verbose=25):
-    """Like train_exact, but with a decaying learning rate (Gütig & Sompolinsky 2009).
+    """Train with a decaying learning rate (Gütig & Sompolinsky 2009) until an epoch is error-free.
 
-    The learning rate in epoch l is lr_ini / (1 + (l - 1) / tau_decay), see
-    decayed_lr; tau_decay = float("inf") gives a constant learning rate.
+    Like train_exact, but the learning rate in epoch l is
+    lr_ini / (1 + (l - 1) / tau_decay), see decayed_lr. An error-free online
+    epoch means no update happened, so all patterns are correctly classified
+    with the final weights.
+
+    Parameters
+    ----------
+    data       : ExactData from prepare_exact or prepare_spikes
+    y          : (P,) labels in {0, 1}
+    theta      : firing threshold
+    lr_ini     : learning rate in the first epoch (Gütig & Sompolinsky 2006: 1e-4 * V0)
+    mu         : momentum (Gütig & Sompolinsky 2006: 0.99)
+    max_epochs : maximum number of learning cycles
+    rng        : random Generator for the pattern order
+    w_init     : initial weights (not modified)
+    tau_decay  : decay time of the learning rate in epochs (halved after tau_decay
+                 epochs); float("inf") gives a constant learning rate
+    verbose    : print progress every `verbose` epochs; 0 = silent
+
+    Returns
+    -------
+    w         : trained weights
+    history   : list of errors per epoch
+    converged : bool
     """
     w = w_init.copy()
     dw = np.zeros_like(w)

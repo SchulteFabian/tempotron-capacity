@@ -28,6 +28,7 @@ export OMP_NUM_THREADS=1 OPENBLAS_NUM_THREADS=1 MKL_NUM_THREADS=1
 
 # Activate the Python environment (adjust if needed).
 # The job runs in the folder where sbatch was called, so submit from the project folder.
+module load python-3.10.2-gcc-8.5.0-f6bu3ie
 source venv/bin/activate
 
 echo "Task $SLURM_ARRAY_TASK_ID: K = $K, mean = $MEAN on $(hostname)"
